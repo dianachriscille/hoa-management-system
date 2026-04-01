@@ -1,14 +1,10 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy backend package files
 COPY backend/package*.json ./
-RUN npm ci
+RUN npm install
 
-# Copy backend source
 COPY backend/ .
-
-# Build
 RUN npm run build
 
 FROM node:20-alpine AS production
@@ -16,7 +12,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY backend/package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
