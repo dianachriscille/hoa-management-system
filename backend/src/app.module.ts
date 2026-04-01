@@ -44,22 +44,8 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
         extra: process.env.DATABASE_URL ? { ssl: { rejectUnauthorized: false } } : {},
       }),
     }),
-    BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
-        const redisUrl = process.env.REDIS_URL || config.get('app.redisUrl') || '';
-        const isTls = redisUrl && redisUrl.startsWith('rediss://');
-        return {
-          connection: redisUrl ? {
-            url: redisUrl,
-            tls: isTls ? { rejectUnauthorized: false } : undefined,
-          } : {
-            host: '127.0.0.1',
-            port: 6379,
-          },
-        };
-      },
-    }),
+    // BullMQ disabled — background jobs will be added after stable deployment
+    // BullModule.forRootAsync({...}),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     AuthModule,
     ResidentModule,

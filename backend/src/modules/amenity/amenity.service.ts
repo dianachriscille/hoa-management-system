@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { AmenityEntity, BookingEntity, BlockedDateEntity, BookingStatus } from './entities/amenity.entities';
 import { AuditService } from '../../common/audit/audit.service';
 
@@ -12,7 +10,6 @@ export class AmenityService {
     @InjectRepository(AmenityEntity) private amenityRepo: Repository<AmenityEntity>,
     @InjectRepository(BookingEntity) private bookingRepo: Repository<BookingEntity>,
     @InjectRepository(BlockedDateEntity) private blockedRepo: Repository<BlockedDateEntity>,
-    @InjectQueue('amenity-reminders') private reminderQueue: Queue,
     private dataSource: DataSource,
     private auditService: AuditService,
   ) {}
@@ -94,12 +91,6 @@ export class AmenityService {
 
     booking.status = BookingStatus.Confirmed;
     await this.bookingRepo.save(booking);
-
-    const bookingDate = new Date(booking.bookingDate);
-    const reminderTime = new Date(bookingDate); reminderTime.setDate(reminderTime.getDate() - 1);
-    const delay = reminderTime.getTime() - Date.now();
-    if (delay > 0) await this.reminderQueue.add('send-reminder', { bookingId: booking.id, userId: booking.userId }, { delay });
-
     await this.auditService.log({ userId: pmUserId, action: 'BOOKING_CONFIRMED', entityType: 'Booking', entityId: bookingId });
     return booking;
   }

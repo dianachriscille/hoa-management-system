@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { MaintenanceRequestEntity, StatusHistoryEntity, RequestPhotoEntity, RequestNoteEntity, MaintenanceStatus, MaintenanceCategory } from './entities/maintenance.entities';
 import { CreateMaintenanceRequestDto, AssignRequestDto, UpdateStatusDto, AddNoteDto } from './maintenance.dto';
 import { AuditService } from '../../common/audit/audit.service';
@@ -23,8 +21,6 @@ export class MaintenanceService {
     @InjectRepository(StatusHistoryEntity) private historyRepo: Repository<StatusHistoryEntity>,
     @InjectRepository(RequestPhotoEntity) private photoRepo: Repository<RequestPhotoEntity>,
     @InjectRepository(RequestNoteEntity) private noteRepo: Repository<RequestNoteEntity>,
-    @InjectQueue('maintenance-auto-close') private autoCloseQueue: Queue,
-    @InjectQueue('maintenance-notifications') private notifQueue: Queue,
     private dataSource: DataSource,
     private auditService: AuditService,
   ) {}
@@ -47,7 +43,6 @@ export class MaintenanceService {
       }
       await queryRunner.manager.save(StatusHistoryEntity, queryRunner.manager.create(StatusHistoryEntity, { requestId: request.id, fromStatus: undefined, toStatus: MaintenanceStatus.Submitted, changedByUserId: userId } as any));
       await queryRunner.commitTransaction();
-      await this.notifQueue.add('notify-pm-new-request', { requestId: request.id, requestNumber });
       await this.auditService.log({ userId, action: 'MAINTENANCE_REQUEST_SUBMITTED', entityType: 'MaintenanceRequest', entityId: request.id });
       return request;
     } catch (err) {
@@ -98,7 +93,6 @@ export class MaintenanceService {
       await queryRunner.manager.save(request);
       await queryRunner.manager.save(StatusHistoryEntity, queryRunner.manager.create(StatusHistoryEntity, { requestId: id, fromStatus: prev, toStatus: MaintenanceStatus.Assigned, changedByUserId: pmUserId, note: dto.note }));
       await queryRunner.commitTransaction();
-      await this.notifQueue.add('notify-assigned', { requestId: id, userId: request.userId, assigneeId: dto.assigneeUserId });
       await this.auditService.log({ userId: pmUserId, action: 'MAINTENANCE_REQUEST_ASSIGNED', entityType: 'MaintenanceRequest', entityId: id });
       return request;
     } catch (err) {
@@ -136,10 +130,8 @@ export class MaintenanceService {
       await queryRunner.commitTransaction();
 
       if (dto.status === MaintenanceStatus.Resolved) {
-        await this.autoCloseQueue.add('auto-close', { requestId: id }, { delay: 7 * 24 * 3600 * 1000 });
-        await this.autoCloseQueue.add('warn-before-close', { requestId: id, userId: request.userId }, { delay: 6 * 24 * 3600 * 1000 });
+        // Auto-close job will be added when Redis is stable
       }
-      await this.notifQueue.add('notify-status-change', { requestId: id, userId: request.userId, newStatus: dto.status });
       await this.auditService.log({ userId, action: 'MAINTENANCE_STATUS_UPDATED', entityType: 'MaintenanceRequest', entityId: id, metadata: { from: prev, to: dto.status } });
       return request;
     } catch (err) {

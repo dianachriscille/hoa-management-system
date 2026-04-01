@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { AnnouncementEntity, AnnouncementStatus, PollEntity, PollStatus, PollOptionEntity, PollVoteEntity, FeedbackFormEntity, EventEntity, DeviceTokenEntity, RsvpStatus } from './entities/communication.entities';
 import { AuditService } from '../../common/audit/audit.service';
 
@@ -16,19 +14,12 @@ export class CommunicationService {
     @InjectRepository(FeedbackFormEntity) private formRepo: Repository<FeedbackFormEntity>,
     @InjectRepository(EventEntity) private eventRepo: Repository<EventEntity>,
     @InjectRepository(DeviceTokenEntity) private tokenRepo: Repository<DeviceTokenEntity>,
-    @InjectQueue('communication-push') private pushQueue: Queue,
-    // SMS queue removed — push notifications only (free)
-    @InjectQueue('poll-auto-close') private pollCloseQueue: Queue,
     private dataSource: DataSource,
     private auditService: AuditService,
   ) {}
 
-  // Announcements
   async createAnnouncement(userId: string, title: string, body: string, sendPush: boolean): Promise<AnnouncementEntity> {
-    const ann = await this.announcementRepo.save(
-      this.announcementRepo.create({ title, body, sendPush, sendSms: false, status: AnnouncementStatus.Published, publishedAt: new Date(), createdByUserId: userId })
-    );
-    if (sendPush) await this.pushQueue.add('send-push', { announcementId: ann.id, title, body });
+    const ann = await this.announcementRepo.save(this.announcementRepo.create({ title, body, sendPush, sendSms: false, status: AnnouncementStatus.Published, publishedAt: new Date(), createdByUserId: userId }));
     await this.auditService.log({ userId, action: 'ANNOUNCEMENT_PUBLISHED', entityType: 'Announcement', entityId: ann.id });
     return ann;
   }
@@ -38,20 +29,13 @@ export class CommunicationService {
   }
 
   async markAnnouncementRead(announcementId: string, userId: string): Promise<void> {
-    await this.dataSource.query(
-      `INSERT INTO announcement_read (id, announcement_id, user_id) VALUES (uuid_generate_v4(), $1, $2) ON CONFLICT DO NOTHING`,
-      [announcementId, userId]
-    );
+    await this.dataSource.query(`INSERT INTO announcement_read (id, announcement_id, user_id) VALUES (uuid_generate_v4(), $1, $2) ON CONFLICT DO NOTHING`, [announcementId, userId]);
   }
 
-  // Polls
   async createPoll(userId: string, question: string, options: string[], closingDate: string): Promise<PollEntity> {
     if (options.length < 2) throw new BadRequestException('Poll must have at least 2 options');
     const poll = await this.pollRepo.save(this.pollRepo.create({ question, closingDate: new Date(closingDate), createdByUserId: userId }));
     await this.optionRepo.save(options.map((text, i) => this.optionRepo.create({ pollId: poll.id, optionText: text, displayOrder: i + 1 })));
-    const delay = new Date(closingDate).setHours(23, 59, 59) - Date.now();
-    if (delay > 0) await this.pollCloseQueue.add('close-poll', { pollId: poll.id }, { delay });
-    await this.pushQueue.add('send-push', { title: 'New Poll', body: question });
     return poll;
   }
 
@@ -61,10 +45,7 @@ export class CommunicationService {
       const options = await this.optionRepo.find({ where: { pollId: p.id }, order: { displayOrder: 'ASC' } });
       const userVote = await this.voteRepo.findOne({ where: { pollId: p.id, userId } });
       const showResults = p.status === PollStatus.Closed || !!userVote;
-      const optionsWithCounts = await Promise.all(options.map(async o => {
-        const count = showResults ? await this.voteRepo.count({ where: { optionId: o.id } }) : null;
-        return { ...o, voteCount: count };
-      }));
+      const optionsWithCounts = await Promise.all(options.map(async o => ({ ...o, voteCount: showResults ? await this.voteRepo.count({ where: { optionId: o.id } }) : null })));
       return { ...p, options: optionsWithCounts, hasVoted: !!userVote, userVoteOptionId: userVote?.optionId };
     }));
   }
@@ -79,7 +60,6 @@ export class CommunicationService {
     await this.voteRepo.save(this.voteRepo.create({ pollId, optionId, userId }));
   }
 
-  // Feedback Forms
   async getForms(): Promise<FeedbackFormEntity[]> {
     return this.formRepo.find({ where: { isActive: true }, order: { createdAt: 'DESC' } });
   }
@@ -92,11 +72,8 @@ export class CommunicationService {
     await this.dataSource.query(`INSERT INTO feedback_response (id, form_id, user_id, answers) VALUES (uuid_generate_v4(), $1, $2, $3)`, [formId, userId, JSON.stringify(answers)]);
   }
 
-  // Events
   async createEvent(userId: string, data: any): Promise<EventEntity> {
-    const event = await this.eventRepo.save(this.eventRepo.create({ ...data, createdByUserId: userId })) as any;
-    await this.pushQueue.add('send-push', { title: `New Event: ${data.title}`, body: `${data.eventDate} at ${data.location || 'TBD'}` });
-    return event;
+    return this.eventRepo.save(this.eventRepo.create({ ...data, createdByUserId: userId })) as any;
   }
 
   async getEvents(): Promise<EventEntity[]> {
@@ -104,10 +81,7 @@ export class CommunicationService {
   }
 
   async submitRsvp(eventId: string, userId: string, status: RsvpStatus): Promise<void> {
-    await this.dataSource.query(
-      `INSERT INTO event_rsvp (id, event_id, user_id, status) VALUES (uuid_generate_v4(), $1, $2, $3) ON CONFLICT (event_id, user_id) DO UPDATE SET status = $3, responded_at = now()`,
-      [eventId, userId, status]
-    );
+    await this.dataSource.query(`INSERT INTO event_rsvp (id, event_id, user_id, status) VALUES (uuid_generate_v4(), $1, $2, $3) ON CONFLICT (event_id, user_id) DO UPDATE SET status = $3, responded_at = now()`, [eventId, userId, status]);
   }
 
   async getEventRsvpSummary(eventId: string): Promise<any> {
@@ -117,15 +91,10 @@ export class CommunicationService {
     return summary;
   }
 
-  // Device Tokens
   async registerDeviceToken(userId: string, token: string, platform: string): Promise<void> {
-    await this.dataSource.query(
-      `INSERT INTO device_token (id, user_id, token, platform) VALUES (uuid_generate_v4(), $1, $2, $3) ON CONFLICT (user_id, token) DO UPDATE SET platform = $3, updated_at = now()`,
-      [userId, token, platform]
-    );
+    await this.dataSource.query(`INSERT INTO device_token (id, user_id, token, platform) VALUES (uuid_generate_v4(), $1, $2, $3) ON CONFLICT (user_id, token) DO UPDATE SET platform = $3, updated_at = now()`, [userId, token, platform]);
   }
 
-  // Engagement Metrics
   async getEngagementMetrics(startDate: string, endDate: string): Promise<any> {
     const totalResidents = await this.dataSource.query(`SELECT COUNT(*) as count FROM resident_profile`);
     const total = parseInt(totalResidents[0].count) || 1;
