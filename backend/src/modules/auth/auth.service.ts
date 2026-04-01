@@ -32,14 +32,19 @@ export class AuthService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    const redisUrl = process.env.REDIS_URL || this.configService.get<string>('app.redisUrl') || 'redis://localhost:6379';
-    const isTls = redisUrl.startsWith('rediss://');
-    this.redis = new Redis(redisUrl, {
-      tls: isTls ? { rejectUnauthorized: false } : undefined,
-      lazyConnect: true,
-      maxRetriesPerRequest: null,
-    });
-    this.redis.connect().catch(() => null);
+    try {
+      const redisUrl = process.env.REDIS_URL || this.configService.get<string>('app.redisUrl') || 'redis://localhost:6379';
+      const isTls = redisUrl.startsWith('rediss://');
+      this.redis = new Redis(redisUrl, {
+        tls: isTls ? { rejectUnauthorized: false } : undefined,
+        lazyConnect: true,
+        maxRetriesPerRequest: null,
+        enableOfflineQueue: false,
+      });
+      this.redis.connect().catch(() => null);
+    } catch {
+      // Redis unavailable — auth will work without session cache
+    }
   }
 
   async register(dto: RegisterDto, ipAddress: string): Promise<void> {

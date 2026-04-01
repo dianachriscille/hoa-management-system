@@ -55,6 +55,8 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
             tls: isTls ? { rejectUnauthorized: false } : undefined,
             enableTLSForSentinelMode: false,
             maxRetriesPerRequest: null,
+            lazyConnect: true,
+            enableOfflineQueue: false,
           },
         };
       },
