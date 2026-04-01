@@ -15,7 +15,7 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register new resident account' })
   register(@Body() dto: RegisterDto, @Req() req: Request) {
-    return this.authService.register(dto, req.ip);
+    return this.authService.register(dto, req.ip || '');
   }
 
   @Public()
@@ -30,7 +30,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login and receive JWT tokens' })
   login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.authService.login(dto, req.ip);
+    return this.authService.login(dto, req.ip || '');
   }
 
   @Public()

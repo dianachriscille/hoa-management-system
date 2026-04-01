@@ -11,7 +11,7 @@ export class MayaWebhookMiddleware implements NestMiddleware {
 
   use(req: Request & { rawBody?: Buffer }, res: Response, next: NextFunction) {
     const signature = req.headers['x-callback-signature'] as string;
-    const secret = this.config.get<string>('app.mayaWebhookSecret');
+    const secret = this.config.get<string>('app.mayaWebhookSecret') || '';
     const rawBody = req.rawBody;
 
     if (!signature || !rawBody) {

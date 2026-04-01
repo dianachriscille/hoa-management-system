@@ -58,7 +58,7 @@ export class AuthService implements OnModuleInit {
     const tokenAge = Date.now() - user.createdAt.getTime();
     if (tokenAge > 24 * 60 * 60 * 1000) throw new BadRequestException('Verification link expired');
     user.isEmailVerified = true;
-    user.emailVerificationToken = null;
+    user.emailVerificationToken = null as any;
     await this.userRepo.save(user);
     await this.auditService.log({ userId: user.id, action: 'EMAIL_VERIFIED', entityType: 'User', entityId: user.id });
   }
@@ -100,7 +100,7 @@ export class AuthService implements OnModuleInit {
     found.isRevoked = true;
     await this.tokenRepo.save(found);
     const user = await this.userRepo.findOne({ where: { id: found.userId } });
-    return this.issueTokens(user);
+    return this.issueTokens(user!);
   }
 
   async logout(userId: string, rawToken: string): Promise<void> {
@@ -126,8 +126,8 @@ export class AuthService implements OnModuleInit {
     const user = await this.userRepo.findOne({ where: { passwordResetToken: token } });
     if (!user || !user.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) throw new BadRequestException('Invalid or expired reset link');
     user.passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    user.passwordResetToken = null;
-    user.passwordResetExpiresAt = null;
+    user.passwordResetToken = null as any;
+    user.passwordResetExpiresAt = null as any;
     await this.userRepo.save(user);
     await this.tokenRepo.update({ userId: user.id }, { isRevoked: true });
     await this.redis.del(`session:${user.id}`).catch(() => null);

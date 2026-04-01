@@ -45,7 +45,10 @@ export class DocumentService {
 
   async uploadDocument(userId: string, title: string, category: DocumentCategory, description: string, file: Express.Multer.File, documentId?: string): Promise<DocumentEntity> {
     let storageProvider: StorageProvider;
-    let googleDriveFileId: string, googleDriveViewUrl: string, googleDriveDownloadUrl: string, s3Key: string;
+    let googleDriveFileId: string = '';
+    let googleDriveViewUrl: string = '';
+    let googleDriveDownloadUrl: string = '';
+    let s3Key: string = '';
 
     try {
       const result = await this.uploadToGoogleDrive(file);
@@ -65,7 +68,7 @@ export class DocumentService {
     try {
       let doc: DocumentEntity;
       if (documentId) {
-        doc = await queryRunner.manager.findOne(DocumentEntity, { where: { id: documentId } });
+        doc = await queryRunner.manager.findOne(DocumentEntity, { where: { id: documentId } }) as any;
         if (!doc) throw new NotFoundException('Document not found');
       } else {
         doc = await queryRunner.manager.save(DocumentEntity, queryRunner.manager.create(DocumentEntity, { title, category, description, uploadedByUserId: userId }));
@@ -122,8 +125,8 @@ export class DocumentService {
       fields: 'id,webViewLink,webContentLink',
     });
 
-    await drive.permissions.create({ fileId: res.data.id, requestBody: { role: 'reader', type: 'anyone' } });
-    return { fileId: res.data.id, viewUrl: res.data.webViewLink, downloadUrl: res.data.webContentLink };
+    await drive.permissions.create({ fileId: res.data.id!, requestBody: { role: 'reader', type: 'anyone' } } as any);
+    return { fileId: res.data.id!, viewUrl: res.data.webViewLink!, downloadUrl: res.data.webContentLink! };
   }
 
   private async uploadToS3Fallback(file: Express.Multer.File): Promise<string> {

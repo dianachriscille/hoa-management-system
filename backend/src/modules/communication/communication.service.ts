@@ -94,7 +94,7 @@ export class CommunicationService {
 
   // Events
   async createEvent(userId: string, data: any): Promise<EventEntity> {
-    const event = await this.eventRepo.save(this.eventRepo.create({ ...data, createdByUserId: userId }));
+    const event = await this.eventRepo.save(this.eventRepo.create({ ...data, createdByUserId: userId })) as any;
     await this.pushQueue.add('send-push', { title: `New Event: ${data.title}`, body: `${data.eventDate} at ${data.location || 'TBD'}` });
     return event;
   }

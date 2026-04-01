@@ -45,7 +45,7 @@ export class MaintenanceService {
       if (dto.photoKeys?.length) {
         await queryRunner.manager.save(RequestPhotoEntity, dto.photoKeys.map(key => queryRunner.manager.create(RequestPhotoEntity, { requestId: request.id, s3Key: key, uploadedByUserId: userId })));
       }
-      await queryRunner.manager.save(StatusHistoryEntity, queryRunner.manager.create(StatusHistoryEntity, { requestId: request.id, fromStatus: null, toStatus: MaintenanceStatus.Submitted, changedByUserId: userId }));
+      await queryRunner.manager.save(StatusHistoryEntity, queryRunner.manager.create(StatusHistoryEntity, { requestId: request.id, fromStatus: undefined, toStatus: MaintenanceStatus.Submitted, changedByUserId: userId } as any));
       await queryRunner.commitTransaction();
       await this.notifQueue.add('notify-pm-new-request', { requestId: request.id, requestNumber });
       await this.auditService.log({ userId, action: 'MAINTENANCE_REQUEST_SUBMITTED', entityType: 'MaintenanceRequest', entityId: request.id });
@@ -131,7 +131,7 @@ export class MaintenanceService {
       }
       if (dto.status === MaintenanceStatus.Closed) request.closedAt = new Date();
       await queryRunner.manager.save(request);
-      await queryRunner.manager.save(StatusHistoryEntity, queryRunner.manager.create(StatusHistoryEntity, { requestId: id, fromStatus: prev, toStatus: dto.status, changedByUserId: userId, note: dto.isInternal ? null : dto.note }));
+      await queryRunner.manager.save(StatusHistoryEntity, queryRunner.manager.create(StatusHistoryEntity, { requestId: id, fromStatus: prev, toStatus: dto.status, changedByUserId: userId, note: dto.isInternal ? undefined : dto.note } as any));
       if (dto.note) await queryRunner.manager.save(RequestNoteEntity, queryRunner.manager.create(RequestNoteEntity, { requestId: id, authorUserId: userId, content: dto.note, isInternal: dto.isInternal ?? false }));
       await queryRunner.commitTransaction();
 

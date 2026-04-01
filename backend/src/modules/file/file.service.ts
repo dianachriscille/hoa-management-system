@@ -20,7 +20,7 @@ export class FileService {
     const timestamp = Math.round(Date.now() / 1000);
     const signature = cloudinary.utils.api_sign_request(
       { timestamp, folder, public_id: key },
-      this.config.get('app.cloudinaryApiSecret'),
+      this.config.get('app.cloudinaryApiSecret') || '',
     );
     const url = `https://api.cloudinary.com/v1_1/${this.config.get('app.cloudinaryCloudName')}/image/upload`;
     return {
@@ -48,7 +48,7 @@ export class FileService {
         { folder, public_id: key, resource_type: 'auto' },
         (error, result) => {
           if (error) return reject(error);
-          resolve({ key: result.public_id, url: result.secure_url });
+          resolve({ key: result!.public_id, url: result!.secure_url });
         },
       ).end(buffer);
     });

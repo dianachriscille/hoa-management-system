@@ -11,7 +11,7 @@ export class PaymongoWebhookMiddleware implements NestMiddleware {
 
   use(req: Request & { rawBody?: Buffer }, res: Response, next: NextFunction) {
     const signature = req.headers['paymongo-signature'] as string;
-    const secret = this.config.get<string>('app.paymongoWebhookSecret');
+    const secret = this.config.get<string>('app.paymongoWebhookSecret') || '';
     const rawBody = req.rawBody;
 
     if (!signature || !rawBody) {

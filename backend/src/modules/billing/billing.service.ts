@@ -6,7 +6,8 @@ import { Queue } from 'bullmq';
 import Axios from 'axios';
 import Decimal from 'decimal.js';
 import { ConfigService } from '@nestjs/config';
-import { InvoiceEntity, PaymentEntity, ReceiptEntity, BillingConfigEntity, InvoiceStatus, PaymentMethod, PaymentStatus } from './entities/billing.entities';
+import { InvoiceEntity, PaymentEntity, ReceiptEntity, InvoiceStatus, PaymentMethod, PaymentStatus } from './entities/billing.entities';
+import { BillingConfigEntity } from './entities/billing-config.entity';
 import { AuditService } from '../../common/audit/audit.service';
 import { ResidentService } from '../resident/resident.service';
 
@@ -139,7 +140,7 @@ export class BillingService {
     const remaining = new Decimal(invoice.amount).minus(totalPaid);
     if (new Decimal(dto.amount).gt(remaining)) throw new BadRequestException(`Amount exceeds remaining balance of ₱${remaining.toFixed(2)}`);
 
-    const payment = this.paymentRepo.create({ invoiceId, amount: dto.amount, paymentMethod: PaymentMethod.Manual, status: PaymentStatus.Completed, recordedBy, notes: dto.notes, referenceNumber: dto.referenceNumber, paidAt: new Date() });
+    const payment = this.paymentRepo.create({ invoiceId, amount: dto.amount, paymentMethod: PaymentMethod.Manual, status: PaymentStatus.Completed, recordedBy, notes: dto.notes, gcashReferenceNumber: dto.referenceNumber, paidAt: new Date() } as any);
     await this.paymentRepo.save(payment);
     await this.auditService.log({ userId: recordedBy, action: 'MANUAL_PAYMENT_RECORDED', entityType: 'Invoice', entityId: invoiceId });
     return this.updateInvoiceAfterPayment(invoiceId, dto.amount, PaymentMethod.Manual, dto.referenceNumber);
@@ -162,6 +163,7 @@ export class BillingService {
 
   private async updateInvoiceAfterPayment(invoiceId: string, amount: number, method: PaymentMethod, referenceNumber?: string): Promise<InvoiceEntity> {
     const invoice = await this.invoiceRepo.findOne({ where: { id: invoiceId } });
+    if (!invoice) return invoice as any;
     const totalPaid = await this.getTotalPaid(invoiceId);
 
     if (totalPaid.gte(invoice.amount)) {

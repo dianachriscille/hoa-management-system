@@ -34,7 +34,7 @@ export class SecurityService {
     const pass = await this.passRepo.save(this.passRepo.create({ passCode, userId, residentProfileId, visitorName, validDate: date }));
 
     const payload = { passCode, visitorName, validDate, unitNumber: (profile as any).unitNumber };
-    const sig = crypto.createHmac('sha256', this.config.get('app.qrHmacSecret')).update(JSON.stringify(payload)).digest('hex');
+    const sig = crypto.createHmac('sha256', this.config.get('app.qrHmacSecret') || '').update(JSON.stringify(payload)).digest('hex');
     const qrDataUrl = await QRCode.toDataURL(JSON.stringify({ ...payload, sig }));
 
     await this.auditService.log({ userId, action: 'VISITOR_PASS_CREATED', entityType: 'VisitorPass', entityId: pass.id });
@@ -57,7 +57,7 @@ export class SecurityService {
       try {
         const data = JSON.parse(qrPayload);
         const { sig, ...payload } = data;
-        const expected = crypto.createHmac('sha256', this.config.get('app.qrHmacSecret')).update(JSON.stringify(payload)).digest('hex');
+        const expected = crypto.createHmac('sha256', this.config.get('app.qrHmacSecret') || '').update(JSON.stringify(payload)).digest('hex');
         if (sig !== expected) return { valid: false, reason: 'Invalid QR code signature' };
       } catch { return { valid: false, reason: 'Invalid QR code format' }; }
     }
@@ -91,7 +91,7 @@ export class SecurityService {
   async createIncidentReport(userId: string, data: any): Promise<IncidentReportEntity> {
     const seq = await this.dataSource.query(`SELECT nextval('incident_report_seq') as seq`);
     const reportNumber = `INC-${new Date().getFullYear()}-${String(seq[0].seq).padStart(3, '0')}`;
-    const report = await this.incidentRepo.save(this.incidentRepo.create({ ...data, reportedByUserId: userId, reportNumber }));
+    const report = await this.incidentRepo.save(this.incidentRepo.create({ ...data, reportedByUserId: userId, reportNumber })) as any;
     await this.auditService.log({ userId, action: 'INCIDENT_REPORT_SUBMITTED', entityType: 'IncidentReport', entityId: report.id });
     return report;
   }

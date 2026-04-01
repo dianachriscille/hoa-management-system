@@ -9,7 +9,7 @@ export class EmailService {
   private logger = new Logger(EmailService.name);
 
   constructor(private config: ConfigService) {
-    this.from = config.get('app.gmailFrom');
+    this.from = config.get('app.gmailFrom') || '';
     this.transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
