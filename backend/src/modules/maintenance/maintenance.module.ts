@@ -4,7 +4,6 @@ import { BullModule } from '@nestjs/bullmq';
 import { MaintenanceService } from './maintenance.service';
 import { MaintenanceController } from './maintenance.controller';
 import { MaintenanceRequestEntity, StatusHistoryEntity, RequestPhotoEntity, RequestNoteEntity } from './entities/maintenance.entities';
-import { MaintenanceAutoCloseWorker, MaintenanceNotificationWorker } from './maintenance.workers';
 import { FileModule } from '../file/file.module';
 import { NotificationModule } from '../notification/notification.module';
 import { AuditModule } from '../../common/audit/audit.module';
@@ -21,7 +20,7 @@ import { AuditModule } from '../../common/audit/audit.module';
     AuditModule,
   ],
   controllers: [MaintenanceController],
-  providers: [MaintenanceService, MaintenanceAutoCloseWorker, MaintenanceNotificationWorker],
+  providers: [MaintenanceService],
   exports: [MaintenanceService],
 })
 export class MaintenanceModule {}
