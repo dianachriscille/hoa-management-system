@@ -32,8 +32,13 @@ export class AuthService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    const redisUrl = this.configService.get<string>('app.redisUrl') || 'redis://localhost:6379';
-    this.redis = new Redis(redisUrl, { tls: redisUrl.startsWith('rediss://') ? {} : undefined, lazyConnect: true });
+    const redisUrl = process.env.REDIS_URL || this.configService.get<string>('app.redisUrl') || 'redis://localhost:6379';
+    const isTls = redisUrl.startsWith('rediss://');
+    this.redis = new Redis(redisUrl, {
+      tls: isTls ? { rejectUnauthorized: false } : undefined,
+      lazyConnect: true,
+      maxRetriesPerRequest: null,
+    });
     this.redis.connect().catch(() => null);
   }
 

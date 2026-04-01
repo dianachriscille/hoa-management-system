@@ -46,12 +46,18 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          url: config.get('app.redisUrl') || 'redis://localhost:6379',
-          tls: config.get('app.redisUrl')?.startsWith('rediss://') ? {} : undefined,
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const redisUrl = process.env.REDIS_URL || config.get('app.redisUrl') || 'redis://localhost:6379';
+        const isTls = redisUrl.startsWith('rediss://');
+        return {
+          connection: {
+            url: redisUrl,
+            tls: isTls ? { rejectUnauthorized: false } : undefined,
+            enableTLSForSentinelMode: false,
+            maxRetriesPerRequest: null,
+          },
+        };
+      },
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     AuthModule,
