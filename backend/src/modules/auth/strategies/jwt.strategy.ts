@@ -6,10 +6,19 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(configService: ConfigService) {
+    const publicKey = configService.get<string>('app.jwtPublicKey')
+      || process.env.JWT_PUBLIC_KEY
+      || '';
+
+    // Convert literal \n back to real newlines if needed
+    const formattedKey = publicKey.includes('\\n')
+      ? publicKey.replace(/\\n/g, '\n')
+      : publicKey;
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('app.jwtPublicKey'),
+      secretOrKey: formattedKey,
       algorithms: ['RS256'],
     });
   }

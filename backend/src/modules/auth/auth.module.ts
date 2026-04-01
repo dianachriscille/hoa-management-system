@@ -19,11 +19,15 @@ import { AuditModule } from '../../common/audit/audit.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        privateKey: config.get('app.jwtPrivateKey'),
-        publicKey: config.get('app.jwtPublicKey'),
-        signOptions: { algorithm: 'RS256', expiresIn: '15m' },
-      }),
+      useFactory: (config: ConfigService) => {
+        const privateKey = (config.get<string>('app.jwtPrivateKey') || process.env.JWT_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+        const publicKey = (config.get<string>('app.jwtPublicKey') || process.env.JWT_PUBLIC_KEY || '').replace(/\\n/g, '\n');
+        return {
+          privateKey,
+          publicKey,
+          signOptions: { algorithm: 'RS256', expiresIn: '15m' },
+        };
+      },
     }),
     ResidentModule,
     NotificationModule,
