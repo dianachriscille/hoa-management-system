@@ -3,7 +3,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { TerminusModule } from '@nestjs/terminus';
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 import { appConfig } from './config/app.config';
 import { AuthModule } from './modules/auth/auth.module';
@@ -55,7 +54,6 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
       }),
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
-    TerminusModule,
     AuthModule,
     ResidentModule,
     NotificationModule,
