@@ -48,18 +48,14 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const redisUrl = process.env.REDIS_URL || config.get('app.redisUrl') || '';
-        if (!redisUrl) {
-          return { connection: { host: 'localhost', port: 6379, lazyConnect: true, enableOfflineQueue: false, maxRetriesPerRequest: null } };
-        }
-        const isTls = redisUrl.startsWith('rediss://');
+        const isTls = redisUrl && redisUrl.startsWith('rediss://');
         return {
-          connection: {
+          connection: redisUrl ? {
             url: redisUrl,
             tls: isTls ? { rejectUnauthorized: false } : undefined,
-            maxRetriesPerRequest: null,
-            lazyConnect: true,
-            enableOfflineQueue: false,
-            retryStrategy: () => null,
+          } : {
+            host: '127.0.0.1',
+            port: 6379,
           },
         };
       },
