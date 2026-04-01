@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -17,17 +17,18 @@ export class CommunicationService {
     @InjectRepository(EventEntity) private eventRepo: Repository<EventEntity>,
     @InjectRepository(DeviceTokenEntity) private tokenRepo: Repository<DeviceTokenEntity>,
     @InjectQueue('communication-push') private pushQueue: Queue,
-    @InjectQueue('communication-sms') private smsQueue: Queue,
+    // SMS queue removed — push notifications only (free)
     @InjectQueue('poll-auto-close') private pollCloseQueue: Queue,
     private dataSource: DataSource,
     private auditService: AuditService,
   ) {}
 
   // Announcements
-  async createAnnouncement(userId: string, title: string, body: string, sendPush: boolean, sendSms: boolean): Promise<AnnouncementEntity> {
-    const ann = await this.announcementRepo.save(this.announcementRepo.create({ title, body, sendPush, sendSms, status: AnnouncementStatus.Published, publishedAt: new Date(), createdByUserId: userId }));
+  async createAnnouncement(userId: string, title: string, body: string, sendPush: boolean): Promise<AnnouncementEntity> {
+    const ann = await this.announcementRepo.save(
+      this.announcementRepo.create({ title, body, sendPush, sendSms: false, status: AnnouncementStatus.Published, publishedAt: new Date(), createdByUserId: userId })
+    );
     if (sendPush) await this.pushQueue.add('send-push', { announcementId: ann.id, title, body });
-    if (sendSms) await this.smsQueue.add('send-sms', { announcementId: ann.id, body });
     await this.auditService.log({ userId, action: 'ANNOUNCEMENT_PUBLISHED', entityType: 'Announcement', entityId: ann.id });
     return ann;
   }
@@ -37,7 +38,10 @@ export class CommunicationService {
   }
 
   async markAnnouncementRead(announcementId: string, userId: string): Promise<void> {
-    await this.dataSource.query(`INSERT INTO announcement_read (id, announcement_id, user_id) VALUES (uuid_generate_v4(), $1, $2) ON CONFLICT DO NOTHING`, [announcementId, userId]);
+    await this.dataSource.query(
+      `INSERT INTO announcement_read (id, announcement_id, user_id) VALUES (uuid_generate_v4(), $1, $2) ON CONFLICT DO NOTHING`,
+      [announcementId, userId]
+    );
   }
 
   // Polls
@@ -71,7 +75,7 @@ export class CommunicationService {
     if (poll.status === PollStatus.Closed) throw new BadRequestException('Poll is closed');
     if (new Date() > new Date(poll.closingDate)) throw new BadRequestException('Poll has expired');
     const existing = await this.voteRepo.findOne({ where: { pollId, userId } });
-    if (existing) throw new ConflictException('You have already voted in this poll');
+    if (existing) throw new BadRequestException('You have already voted in this poll');
     await this.voteRepo.save(this.voteRepo.create({ pollId, optionId, userId }));
   }
 
@@ -84,7 +88,7 @@ export class CommunicationService {
     const form = await this.formRepo.findOne({ where: { id: formId, isActive: true } });
     if (!form) throw new NotFoundException('Form not found');
     const existing = await this.dataSource.query(`SELECT id FROM feedback_response WHERE form_id = $1 AND user_id = $2`, [formId, userId]);
-    if (existing.length) throw new ConflictException('You have already submitted this form');
+    if (existing.length) throw new BadRequestException('You have already submitted this form');
     await this.dataSource.query(`INSERT INTO feedback_response (id, form_id, user_id, answers) VALUES (uuid_generate_v4(), $1, $2, $3)`, [formId, userId, JSON.stringify(answers)]);
   }
 
@@ -100,7 +104,10 @@ export class CommunicationService {
   }
 
   async submitRsvp(eventId: string, userId: string, status: RsvpStatus): Promise<void> {
-    await this.dataSource.query(`INSERT INTO event_rsvp (id, event_id, user_id, status) VALUES (uuid_generate_v4(), $1, $2, $3) ON CONFLICT (event_id, user_id) DO UPDATE SET status = $3, responded_at = now()`, [eventId, userId, status]);
+    await this.dataSource.query(
+      `INSERT INTO event_rsvp (id, event_id, user_id, status) VALUES (uuid_generate_v4(), $1, $2, $3) ON CONFLICT (event_id, user_id) DO UPDATE SET status = $3, responded_at = now()`,
+      [eventId, userId, status]
+    );
   }
 
   async getEventRsvpSummary(eventId: string): Promise<any> {
@@ -112,7 +119,10 @@ export class CommunicationService {
 
   // Device Tokens
   async registerDeviceToken(userId: string, token: string, platform: string): Promise<void> {
-    await this.dataSource.query(`INSERT INTO device_token (id, user_id, token, platform) VALUES (uuid_generate_v4(), $1, $2, $3) ON CONFLICT (user_id, token) DO UPDATE SET platform = $3, updated_at = now()`, [userId, token, platform]);
+    await this.dataSource.query(
+      `INSERT INTO device_token (id, user_id, token, platform) VALUES (uuid_generate_v4(), $1, $2, $3) ON CONFLICT (user_id, token) DO UPDATE SET platform = $3, updated_at = now()`,
+      [userId, token, platform]
+    );
   }
 
   // Engagement Metrics

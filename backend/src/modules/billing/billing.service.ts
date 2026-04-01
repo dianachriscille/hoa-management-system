@@ -12,7 +12,8 @@ import { ResidentService } from '../resident/resident.service';
 
 @Injectable()
 export class BillingService {
-  private mayaAxios = Axios.create({ baseURL: 'https://pg.maya.ph', timeout: 10000 });
+  // PayMongo API base URL
+  private paymongoAxios = Axios.create({ baseURL: 'https://api.paymongo.com/v1', timeout: 10000 });
 
   constructor(
     @InjectRepository(InvoiceEntity) private invoiceRepo: Repository<InvoiceEntity>,
@@ -26,10 +27,10 @@ export class BillingService {
     private residentService: ResidentService,
     private dataSource: DataSource,
   ) {
-    this.mayaAxios.defaults.auth = {
-      username: config.get('app.mayaPublicKey'),
-      password: '',
-    };
+    // PayMongo uses Base64-encoded secret key as Bearer token
+    const secretKey = Buffer.from(`${config.get('app.paymongoSecretKey')}:`).toString('base64');
+    this.paymongoAxios.defaults.headers.common['Authorization'] = `Basic ${secretKey}`;
+    this.paymongoAxios.defaults.headers.common['Content-Type'] = 'application/json';
   }
 
   async generateInvoices(billingPeriod: string, triggeredBy: string): Promise<{ generated: number; skipped: number }> {
@@ -70,50 +71,63 @@ export class BillingService {
     return invoice;
   }
 
-  async initiateMayaPayment(invoiceId: string, userId: string): Promise<{ checkoutUrl: string }> {
+  async initiatePaymongoPayment(invoiceId: string, userId: string): Promise<{ checkoutUrl: string }> {
     const invoice = await this.getInvoice(invoiceId, userId, 'Resident');
     if (invoice.status === InvoiceStatus.Paid) throw new BadRequestException('Invoice already paid');
 
     const pending = await this.paymentRepo.findOne({ where: { invoiceId, status: PaymentStatus.Pending } });
     if (pending) throw new ConflictException('A payment is already in progress for this invoice');
 
-    let checkoutUrl: string;
     try {
-      const { data } = await this.mayaAxios.post('/payby/v2/paymaya/link', {
-        totalAmount: { value: invoice.amount, currency: 'PHP' },
-        requestReferenceNumber: invoiceId,
-        redirectUrl: {
-          success: `${this.config.get('app.frontendUrl')}/billing?status=success`,
-          failure: `${this.config.get('app.frontendUrl')}/billing?status=failed`,
-          cancel: `${this.config.get('app.frontendUrl')}/billing?status=cancelled`,
+      // PayMongo: create a payment link (supports GCash, Maya, cards)
+      const { data } = await this.paymongoAxios.post('/links', {
+        data: {
+          attributes: {
+            amount: Math.round(Number(invoice.amount) * 100), // PayMongo uses centavos
+            description: `HOA Dues - ${invoice.billingPeriod}`,
+            remarks: invoice.invoiceNumber,
+          },
         },
-        metadata: { billingPeriod: invoice.billingPeriod },
       });
-      checkoutUrl = data.redirectUrl;
-      const payment = this.paymentRepo.create({ invoiceId, amount: invoice.amount, paymentMethod: PaymentMethod.GCash, status: PaymentStatus.Pending, gcashPaymentId: data.paymentId, gcashCheckoutUrl: checkoutUrl });
+
+      const checkoutUrl = data.data.attributes.checkout_url;
+      const linkId = data.data.id;
+
+      const payment = this.paymentRepo.create({
+        invoiceId,
+        amount: invoice.amount,
+        paymentMethod: PaymentMethod.GCash,
+        status: PaymentStatus.Pending,
+        gcashPaymentId: linkId,
+        gcashCheckoutUrl: checkoutUrl,
+      });
       await this.paymentRepo.save(payment);
+
+      return { checkoutUrl };
     } catch (err) {
       throw new BadRequestException('Payment service temporarily unavailable. Please try again.');
     }
-
-    return { checkoutUrl };
   }
 
-  async handleMayaWebhook(payload: any): Promise<void> {
-    const payment = await this.paymentRepo.findOne({ where: { gcashPaymentId: payload.id } });
+  async handlePaymongoWebhook(payload: any): Promise<void> {
+    const eventType = payload?.data?.attributes?.type;
+    const linkId = payload?.data?.attributes?.data?.id;
+
+    const payment = await this.paymentRepo.findOne({ where: { gcashPaymentId: linkId } });
     if (!payment) return;
 
-    if (payload.isPaid || payload.status === 'PAYMENT_SUCCESS') {
+    if (eventType === 'link.payment.paid') {
       payment.status = PaymentStatus.Completed;
-      payment.gcashReferenceNumber = payload.referenceNumber;
+      payment.gcashReferenceNumber = payload?.data?.attributes?.data?.attributes?.reference_number;
       payment.paidAt = new Date();
       await this.paymentRepo.save(payment);
-      await this.updateInvoiceAfterPayment(payment.invoiceId, payment.amount, PaymentMethod.GCash, payload.referenceNumber);
+      await this.updateInvoiceAfterPayment(payment.invoiceId, payment.amount, PaymentMethod.GCash, payment.gcashReferenceNumber);
     } else {
       payment.status = PaymentStatus.Failed;
       await this.paymentRepo.save(payment);
     }
-    await this.auditService.log({ action: 'MAYA_WEBHOOK_PROCESSED', entityType: 'Payment', entityId: payment.id, metadata: { status: payment.status } });
+
+    await this.auditService.log({ action: 'PAYMONGO_WEBHOOK_PROCESSED', entityType: 'Payment', entityId: payment.id, metadata: { status: payment.status } });
   }
 
   async recordManualPayment(invoiceId: string, dto: any, recordedBy: string): Promise<InvoiceEntity> {

@@ -1,60 +1,65 @@
 # HOA Management System
 
-A web-based Homeowners Association management platform built with NestJS, React, PostgreSQL, Redis, and AWS.
+A web-based Homeowners Association management platform — built entirely with **free services**.
+
+## Tech Stack (All Free)
+
+| Layer | Technology |
+|---|---|
+| Backend | NestJS + TypeScript (Node.js 20) |
+| Frontend | React 18 + Vite + Tailwind CSS |
+| Database | PostgreSQL on Railway.app |
+| Cache / Queue | Upstash Redis (free tier) |
+| File Storage | Cloudinary (10GB free) |
+| Email | Gmail SMTP via Nodemailer |
+| Payments | PayMongo (GCash — free to register) |
+| Push Notifications | Firebase FCM (free) |
+| Document Storage | Google Drive API (free) |
+| Backend Hosting | Railway.app |
+| Frontend Hosting | Vercel (free) |
+| CI/CD | GitHub Actions (free) |
 
 ## Project Structure
 
 ```
 ├── backend/          # NestJS API (TypeScript)
 ├── frontend/         # React + Vite (TypeScript)
-├── infrastructure/   # Terraform (AWS)
+├── infrastructure/   # Legacy Terraform (not used — Railway handles infra)
+├── aidlc-docs/       # AI-DLC documentation
 └── .github/          # GitHub Actions CI/CD
 ```
 
-## Prerequisites
-- Node.js 20+
-- Docker
-- Terraform 1.6+
-- AWS CLI configured
+## Quick Start
 
-## Local Development
-
-### Backend
 ```bash
+# Backend
 cd backend
-cp .env.example .env   # fill in local values
+copy .env.example .env   # fill in values
 npm install
 npm run migration:run
-npm run start:dev
-```
+npm run start:dev         # http://localhost:3000
 
-### Frontend
-```bash
+# Frontend
 cd frontend
 npm install
-npm run dev
+npm run dev               # http://localhost:5173
 ```
 
-## Environment Variables (Backend)
-| Variable | Description |
-|---|---|
-| `DB_HOST` | PostgreSQL host |
-| `DB_PASSWORD` | PostgreSQL password |
-| `REDIS_HOST` | Redis host |
-| `JWT_PRIVATE_KEY` | RS256 private key (PEM) |
-| `JWT_PUBLIC_KEY` | RS256 public key (PEM) |
-| `AWS_REGION` | AWS region |
-| `AWS_S3_UPLOADS_BUCKET` | S3 uploads bucket name |
-| `AWS_SES_FROM_EMAIL` | Verified SES sender email |
-| `FRONTEND_URL` | Frontend URL for CORS and email links |
+## Environment Variables
 
-## Infrastructure Deployment
-```bash
-cd infrastructure/environments/dev
-terraform init
-terraform apply
-```
+See `backend/.env.example` for all required variables with setup instructions.
 
-## CI/CD
-- Push to `dev` → auto-deploy to dev environment
-- Push to `main` → manual approval → deploy to production
+## Deployment
+
+- **Backend**: Push to `main` → auto-deploys to Railway.app
+- **Frontend**: Push to `main` → auto-deploys to Vercel
+
+## Free Service Accounts Needed
+
+1. [Railway.app](https://railway.app) — backend + PostgreSQL
+2. [Vercel](https://vercel.com) — frontend
+3. [Cloudinary](https://cloudinary.com) — file storage
+4. [Upstash](https://upstash.com) — Redis
+5. [PayMongo](https://dashboard.paymongo.com) — GCash payments
+6. [Firebase](https://console.firebase.google.com) — push notifications
+7. Gmail account — transactional email

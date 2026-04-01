@@ -4,10 +4,6 @@ on:
   push:
     branches: [dev, main]
 
-env:
-  AWS_REGION: ap-southeast-1
-  ECR_REPOSITORY: hoa-backend
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -20,62 +16,39 @@ jobs:
       - run: npm test -- --coverage
         working-directory: backend
 
-  build-and-push:
+  deploy-backend:
     needs: test
     runs-on: ubuntu-latest
-    outputs:
-      image: ${{ steps.build.outputs.image }}
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-      - id: build
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      - name: Deploy backend to Railway
+        run: railway up --service hoa-backend
         working-directory: backend
-        run: |
-          TAG=${{ github.ref_name == 'main' && 'prod' || 'dev' }}
-          IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:$TAG
-          docker build -t $IMAGE .
-          docker push $IMAGE
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+        env:
+          RAILWAY_TOKEN: ${{ github.ref_name == 'main' && secrets.RAILWAY_TOKEN_PROD || secrets.RAILWAY_TOKEN_DEV }}
 
-  deploy-dev:
-    if: github.ref_name == 'dev'
-    needs: build-and-push
+  deploy-frontend:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: hashicorp/setup-terraform@v3
-      - run: terraform init && terraform apply -auto-approve
-        working-directory: infrastructure/environments/dev
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm', cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
         env:
-          TF_VAR_db_password: ${{ secrets.DEV_DB_PASSWORD }}
-      - run: aws ecs update-service --cluster hoa-cluster-dev --service hoa-backend-dev --force-new-deployment
-
-  deploy-prod:
-    if: github.ref_name == 'main'
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+          VITE_API_URL: ${{ github.ref_name == 'main' && secrets.PROD_API_URL || secrets.DEV_API_URL }}
+      - name: Deploy frontend to Vercel
+        uses: amondnet/vercel-action@v25
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: hashicorp/setup-terraform@v3
-      - run: terraform init && terraform apply -auto-approve
-        working-directory: infrastructure/environments/prod
-        env:
-          TF_VAR_db_password: ${{ secrets.PROD_DB_PASSWORD }}
-      - run: aws ecs update-service --cluster hoa-cluster-prod --service hoa-backend-prod --force-new-deployment
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: frontend
+          vercel-args: ${{ github.ref_name == 'main' && '--prod' || '' }}

@@ -25,9 +25,9 @@ export class BillingController {
 
   @Post('invoices/:id/pay')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Initiate GCash/Maya payment' })
+  @ApiOperation({ summary: 'Initiate GCash payment via PayMongo' })
   initiatePayment(@Param('id') id: string, @Req() req: any) {
-    return this.billingService.initiateMayaPayment(id, req.user.userId);
+    return this.billingService.initiatePaymongoPayment(id, req.user.userId);
   }
 
   @Post('invoices/:id/manual-payment')
@@ -52,10 +52,10 @@ export class BillingController {
   }
 
   @Public()
-  @Post('webhooks/maya')
+  @Post('webhooks/paymongo')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Maya payment webhook (public)' })
-  mayaWebhook(@Body() payload: any) {
-    return this.billingService.handleMayaWebhook(payload);
+  @ApiOperation({ summary: 'PayMongo payment webhook (public)' })
+  paymongoWebhook(@Body() payload: any) {
+    return this.billingService.handlePaymongoWebhook(payload);
   }
 }

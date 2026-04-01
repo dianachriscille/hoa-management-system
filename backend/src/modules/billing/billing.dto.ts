@@ -1,6 +1,5 @@
 import { IsString, IsNumber, IsPositive, IsOptional, IsEnum, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { PaymentMethod } from './entities/billing.entities';
 
 export class GenerateInvoicesDto {
   @ApiProperty({ example: '2025-07' })
@@ -14,12 +13,17 @@ export class ManualPaymentDto {
   @ApiProperty({ required: false }) @IsOptional() @IsString() notes?: string;
 }
 
-export class MayaWebhookDto {
-  id: string;
-  isPaid: boolean;
-  status: string;
-  referenceNumber: string;
-  receiptNumber: string;
-  requestReferenceNumber: string;
-  metadata?: Record<string, any>;
+export class PaymongoWebhookDto {
+  data: {
+    attributes: {
+      type: string;
+      data: {
+        id: string;
+        attributes: {
+          reference_number: string;
+          status: string;
+        };
+      };
+    };
+  };
 }

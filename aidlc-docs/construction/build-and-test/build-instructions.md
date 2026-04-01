@@ -1,169 +1,128 @@
-# Build Instructions — HOA Management System
+# Build Instructions — HOA Management System (Free Services)
 
-## Prerequisites
+## Free Services Used
 
-| Requirement | Version |
-|---|---|
-| Node.js | 20 LTS |
-| npm | 10+ |
-| Docker | 24+ |
-| Terraform | 1.6+ |
-| AWS CLI | 2.x (configured with credentials) |
-| Git | 2.x |
-
-## Environment Variables (Backend)
-
-Copy `backend/.env.example` to `backend/.env` and fill in values:
-
-```bash
-PORT=3000
-NODE_ENV=development
-DB_HOST=localhost
-DB_PORT=5432
-DB_USERNAME=postgres
-DB_PASSWORD=<your-db-password>
-DB_NAME=hoa_system
-REDIS_HOST=localhost
-REDIS_PORT=6379
-JWT_PRIVATE_KEY=<RS256-private-key-pem>
-JWT_PUBLIC_KEY=<RS256-public-key-pem>
-AWS_REGION=ap-southeast-1
-AWS_S3_UPLOADS_BUCKET=<bucket-name>
-AWS_SES_FROM_EMAIL=<verified-ses-email>
-FRONTEND_URL=http://localhost:5173
-MAYA_PUBLIC_KEY=<maya-api-key>
-MAYA_WEBHOOK_SECRET=<maya-webhook-secret>
-GOOGLE_DRIVE_CLIENT_ID=<google-oauth-client-id>
-GOOGLE_DRIVE_CLIENT_SECRET=<google-oauth-client-secret>
-FCM_SERVER_KEY=<firebase-service-account-json>
-TWILIO_ACCOUNT_SID=<twilio-sid>
-TWILIO_AUTH_TOKEN=<twilio-token>
-TWILIO_FROM_NUMBER=<twilio-number>
-QR_HMAC_SECRET=<random-32-char-secret>
-```
+| Service | Purpose | Free Tier |
+|---|---|---|
+| Railway.app | Backend hosting + PostgreSQL | $5 credit/month |
+| Vercel | Frontend hosting | Unlimited free |
+| Cloudinary | File storage (photos, documents) | 10GB free |
+| Gmail SMTP | Transactional email | 500/day free |
+| PayMongo | GCash payments | Free to register, ~2.5% per transaction |
+| Firebase FCM | Push notifications | Free |
+| Google Drive API | Document repository | Free |
+| Upstash Redis | Session cache + BullMQ | 10K commands/day free |
 
 ---
 
 ## Local Development Setup
 
-### 1. Start Local Services (Docker)
-
+### Step 1 — Install dependencies
 ```bash
-# Start PostgreSQL + Redis locally
+cd backend && npm install
+cd ../frontend && npm install
+```
+
+### Step 2 — Start local PostgreSQL and Redis
+```bash
 docker run -d --name hoa-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=hoa_system -p 5432:5432 postgres:15
 docker run -d --name hoa-redis -p 6379:6379 redis:7
 ```
 
-### 2. Install Backend Dependencies
-
+### Step 3 — Configure environment
 ```bash
 cd backend
-npm install
+copy .env.example .env
+# Fill in all values
 ```
 
-### 3. Run Database Migrations
-
+### Step 4 — Run migrations and start
 ```bash
 cd backend
 npm run migration:run
-```
-
-### 4. Start Backend (Development)
-
-```bash
-cd backend
 npm run start:dev
-# API available at http://localhost:3000
-# Swagger docs at http://localhost:3000/api/docs
-```
 
-### 5. Install Frontend Dependencies
-
-```bash
-cd frontend
-npm install
-```
-
-### 6. Start Frontend (Development)
-
-```bash
 cd frontend
 npm run dev
-# App available at http://localhost:5173
 ```
 
 ---
 
-## Production Build
+## Free Service Setup Guides
 
-### Backend
-
-```bash
-cd backend
-npm run build
-# Output: backend/dist/
+### Gmail SMTP
+1. Go to `https://myaccount.google.com/security`
+2. Enable **2-Step Verification**
+3. Search **App Passwords** → Generate for "Mail"
+4. Copy the 16-character password
+```
+GMAIL_USER=youremail@gmail.com
+GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+GMAIL_FROM="HOA Management <youremail@gmail.com>"
 ```
 
-### Frontend
-
-```bash
-cd frontend
-npm run build
-# Output: frontend/dist/
+### Cloudinary
+1. Sign up at `https://cloudinary.com`
+2. Dashboard → copy Cloud Name, API Key, API Secret
+```
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=123456789012345
+CLOUDINARY_API_SECRET=your-api-secret
 ```
 
-### Docker Image (Backend)
-
-```bash
-cd backend
-docker build -t hoa-backend:latest .
-docker tag hoa-backend:latest <ecr-repo-url>:latest
-docker push <ecr-repo-url>:latest
+### Upstash Redis
+1. Sign up at `https://upstash.com`
+2. Create Redis database → copy Redis URL (starts with `rediss://`)
+```
+REDIS_URL=rediss://default:password@host:port
 ```
 
----
-
-## Infrastructure Deployment (Terraform)
-
-### Dev Environment
-
-```bash
-cd infrastructure/environments/dev
-terraform init
-terraform plan -var="db_password=<password>"
-terraform apply -var="db_password=<password>"
+### PayMongo
+1. Sign up at `https://dashboard.paymongo.com`
+2. Developers → API Keys → copy Public + Secret keys
+3. Developers → Webhooks → Create webhook
+   - URL: `https://your-backend-url/billing/webhooks/paymongo`
+   - Events: `link.payment.paid`, `link.payment.failed`
+4. Copy webhook secret
 ```
-
-### Production Environment
-
-```bash
-cd infrastructure/environments/prod
-terraform init
-terraform plan -var="db_password=<password>"
-# Review plan carefully before applying
-terraform apply -var="db_password=<password>"
+PAYMONGO_PUBLIC_KEY=pk_test_xxxx
+PAYMONGO_SECRET_KEY=sk_test_xxxx
+PAYMONGO_WEBHOOK_SECRET=whsk_xxxx
 ```
 
 ---
 
-## Verify Build Success
+## Production Deployment
 
-- Backend: `curl http://localhost:3000/health` → `{ "status": "ok", "database": "connected" }`
-- Frontend: Open `http://localhost:5173` → Login page renders
-- Swagger: Open `http://localhost:3000/api/docs` → API documentation loads
+### Backend → Railway.app
+1. Sign up at `https://railway.app`
+2. New Project → Deploy from GitHub repo
+3. Add **PostgreSQL** plugin (auto-sets DB credentials)
+4. Add all environment variables from `.env.example`
+5. Deploy → Railway gives you a public URL
+
+### Frontend → Vercel
+1. Sign up at `https://vercel.com`
+2. New Project → Import from GitHub
+3. Set root directory to `frontend`
+4. Add env var: `VITE_API_URL=https://your-railway-url`
+5. Deploy
+
+### GitHub Actions Secrets Required
+| Secret | Value |
+|---|---|
+| `RAILWAY_TOKEN_DEV` | Railway token for dev |
+| `RAILWAY_TOKEN_PROD` | Railway token for prod |
+| `VERCEL_TOKEN` | Vercel API token |
+| `VERCEL_ORG_ID` | Vercel org ID |
+| `VERCEL_PROJECT_ID` | Vercel project ID |
+| `DEV_API_URL` | Dev backend Railway URL |
+| `PROD_API_URL` | Prod backend Railway URL |
 
 ---
 
-## Troubleshooting
-
-### Migration fails
-- Ensure PostgreSQL is running and credentials are correct
-- Check `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME` in `.env`
-
-### Redis connection error
-- Ensure Redis is running: `docker ps | grep redis`
-- Check `REDIS_HOST` and `REDIS_PORT` in `.env`
-
-### JWT errors
-- Generate RS256 key pair: `openssl genrsa -out private.pem 2048 && openssl rsa -in private.pem -pubout -out public.pem`
-- Set `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` in `.env` (single-line PEM with `\n`)
+## Verify Deployment
+```bash
+curl https://your-railway-url/health
+# Expected: { "status": "ok", "database": "connected" }
+```
