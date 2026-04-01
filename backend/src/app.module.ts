@@ -47,16 +47,19 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const redisUrl = process.env.REDIS_URL || config.get('app.redisUrl') || 'redis://localhost:6379';
+        const redisUrl = process.env.REDIS_URL || config.get('app.redisUrl') || '';
+        if (!redisUrl) {
+          return { connection: { host: 'localhost', port: 6379, lazyConnect: true, enableOfflineQueue: false, maxRetriesPerRequest: null } };
+        }
         const isTls = redisUrl.startsWith('rediss://');
         return {
           connection: {
             url: redisUrl,
             tls: isTls ? { rejectUnauthorized: false } : undefined,
-            enableTLSForSentinelMode: false,
             maxRetriesPerRequest: null,
             lazyConnect: true,
             enableOfflineQueue: false,
+            retryStrategy: () => null,
           },
         };
       },
