@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { CommunicationService } from './communication.service';
 import { CommunicationController } from './communication.controller';
 import { AnnouncementEntity, PollEntity, PollOptionEntity, PollVoteEntity, FeedbackFormEntity, EventEntity, DeviceTokenEntity } from './entities/communication.entities';
+import { AuditModule } from '../../common/audit/audit.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { AnnouncementEntity, PollEntity, PollOptionEntity, PollVoteEntity, Feedb
       { name: 'communication-push' },
       { name: 'poll-auto-close' },
     ),
+    AuditModule,
   ],
   controllers: [CommunicationController],
   providers: [CommunicationService],

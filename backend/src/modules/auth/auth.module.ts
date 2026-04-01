@@ -10,6 +10,7 @@ import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { ResidentModule } from '../resident/resident.module';
 import { NotificationModule } from '../notification/notification.module';
+import { AuditModule } from '../../common/audit/audit.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { NotificationModule } from '../notification/notification.module';
     }),
     ResidentModule,
     NotificationModule,
+    AuditModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

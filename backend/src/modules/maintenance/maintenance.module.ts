@@ -7,6 +7,7 @@ import { MaintenanceRequestEntity, StatusHistoryEntity, RequestPhotoEntity, Requ
 import { MaintenanceAutoCloseWorker, MaintenanceNotificationWorker } from './maintenance.workers';
 import { FileModule } from '../file/file.module';
 import { NotificationModule } from '../notification/notification.module';
+import { AuditModule } from '../../common/audit/audit.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { NotificationModule } from '../notification/notification.module';
     ),
     FileModule,
     NotificationModule,
+    AuditModule,
   ],
   controllers: [MaintenanceController],
   providers: [MaintenanceService, MaintenanceAutoCloseWorker, MaintenanceNotificationWorker],

@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 export interface AuditLogDto {
   userId?: string;
@@ -13,9 +12,17 @@ export interface AuditLogDto {
 
 @Injectable()
 export class AuditService {
-  constructor(@InjectRepository('AuditLogEntity') private auditRepo: Repository<any>) {}
+  constructor(private dataSource: DataSource) {}
 
   async log(dto: AuditLogDto): Promise<void> {
-    await this.auditRepo.save({ ...dto, performedAt: new Date() });
+    try {
+      await this.dataSource.query(
+        `INSERT INTO audit_log (id, user_id, action, entity_type, entity_id, ip_address, metadata, performed_at)
+         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, $6, now())`,
+        [dto.userId || null, dto.action, dto.entityType, dto.entityId || null, dto.ipAddress || null, dto.metadata ? JSON.stringify(dto.metadata) : null],
+      );
+    } catch {
+      // Audit log failures should never break the main flow
+    }
   }
 }

@@ -5,12 +5,14 @@ import { AmenityService } from './amenity.service';
 import { AmenityController } from './amenity.controller';
 import { AmenityEntity, BookingEntity, BlockedDateEntity } from './entities/amenity.entities';
 import { NotificationModule } from '../notification/notification.module';
+import { AuditModule } from '../../common/audit/audit.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([AmenityEntity, BookingEntity, BlockedDateEntity]),
     BullModule.registerQueue({ name: 'amenity-reminders' }),
     NotificationModule,
+    AuditModule,
   ],
   controllers: [AmenityController],
   providers: [AmenityService],

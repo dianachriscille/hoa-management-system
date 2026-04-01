@@ -9,6 +9,7 @@ import { InvoiceGenerationWorker, OverdueReminderWorker, PendingPaymentCleanupWo
 import { ResidentModule } from '../resident/resident.module';
 import { NotificationModule } from '../notification/notification.module';
 import { FileModule } from '../file/file.module';
+import { AuditModule } from '../../common/audit/audit.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { FileModule } from '../file/file.module';
     ResidentModule,
     NotificationModule,
     FileModule,
+    AuditModule,
   ],
   controllers: [BillingController],
   providers: [BillingService, InvoiceGenerationWorker, OverdueReminderWorker, PendingPaymentCleanupWorker, ReceiptEmailWorker],
