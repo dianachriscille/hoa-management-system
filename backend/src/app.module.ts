@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
+import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TerminusModule } from '@nestjs/terminus';
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
@@ -11,6 +10,13 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ResidentModule } from './modules/resident/resident.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { FileModule } from './modules/file/file.module';
+import { BillingModule } from './modules/billing/billing.module';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
+import { AmenityModule } from './modules/amenity/amenity.module';
+import { DocumentModule } from './modules/document/document.module';
+import { CommunicationModule } from './modules/communication/communication.module';
+import { SecurityModule } from './modules/security/security.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthController } from './health/health.controller';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -25,25 +31,41 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
+        url: process.env.DATABASE_URL,
         host: config.get('app.dbHost'),
         port: config.get('app.dbPort'),
         username: config.get('app.dbUsername'),
         password: config.get('app.dbPassword'),
         database: config.get('app.dbName'),
-        entities: [UserEntity, RefreshTokenEntity, ResidentProfileEntity],
+        entities: [__dirname + '/**/*.entity{.ts,.js}', __dirname + '/**/entities/*.entities{.ts,.js}'],
         migrations: ['dist/database/migrations/*.js'],
         migrationsRun: true,
         synchronize: false,
         ssl: config.get('app.nodeEnv') === 'production' ? { rejectUnauthorized: false } : false,
       }),
     }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          url: config.get('app.redisUrl') || 'redis://localhost:6379',
+          tls: config.get('app.redisUrl')?.startsWith('rediss://') ? {} : undefined,
+        },
+      }),
+    }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
-    PassportModule,
     TerminusModule,
     AuthModule,
     ResidentModule,
     NotificationModule,
     FileModule,
+    BillingModule,
+    MaintenanceModule,
+    AmenityModule,
+    DocumentModule,
+    CommunicationModule,
+    SecurityModule,
+    AnalyticsModule,
   ],
   controllers: [HealthController],
   providers: [
