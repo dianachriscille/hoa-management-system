@@ -14,7 +14,7 @@ export class CommunicationController {
   // Announcements
   @Get('announcements') getAnnouncements() { return this.commService.getAnnouncements(); }
   @Post('announcements') @Roles(Role.BoardMember, Role.PropertyManager)
-  createAnnouncement(@Body() b: any, @Req() req: any) { return this.commService.createAnnouncement(req.user.userId, b.title, b.body, b.sendPush, b.sendSms); }
+  createAnnouncement(@Body() b: any, @Req() req: any) { return this.commService.createAnnouncement(req.user.userId, b.title, b.body, b.sendPush); }
   @Post('announcements/:id/read') @HttpCode(HttpStatus.OK)
   markRead(@Param('id') id: string, @Req() req: any) { return this.commService.markAnnouncementRead(id, req.user.userId); }
 
