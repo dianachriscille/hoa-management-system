@@ -136,7 +136,7 @@ export class AuthService implements OnModuleInit {
 
   private async issueTokens(user: UserEntity): Promise<AuthTokensDto> {
     const payload = { sub: user.id, role: user.role, email: user.email };
-    const accessToken = this.jwtService.sign(payload, { privateKey: (this.configService.get('app.jwtPrivateKey') || process.env.JWT_PRIVATE_KEY || '').replace(/\\n/g, '\n'), algorithm: 'RS256', expiresIn: '15m' });
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
     const rawRefresh = uuidv4();
     const tokenHash = await bcrypt.hash(rawRefresh, 10);
     const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000);
