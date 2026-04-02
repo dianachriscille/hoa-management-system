@@ -48,13 +48,21 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const url = config.get('app.redisUrl');
-        const isTls = url?.startsWith('rediss://');
+        if (!url || url === 'redis://localhost:6379') {
+          return { connection: { host: 'localhost', port: 6379 } };
+        }
+        const isTls = url.startsWith('rediss://');
+        const parsed = new URL(url);
         return {
           connection: {
-            url,
+            host: parsed.hostname,
+            port: parseInt(parsed.port || '6379'),
+            password: decodeURIComponent(parsed.password),
+            username: parsed.username || 'default',
             tls: isTls ? { rejectUnauthorized: false } : undefined,
             family: 0,
             maxRetriesPerRequest: null,
+            reconnectOnError: () => false,
           },
         };
       },
