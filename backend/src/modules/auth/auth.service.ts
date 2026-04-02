@@ -19,7 +19,7 @@ const BCRYPT_ROUNDS = 12;
 
 @Injectable()
 export class AuthService implements OnModuleInit {
-  private redis: Redis;
+  private redis: Redis | null = null;
 
   constructor(
     @InjectRepository(UserEntity) private userRepo: Repository<UserEntity>,
@@ -31,20 +31,46 @@ export class AuthService implements OnModuleInit {
     private residentService: ResidentService,
   ) {}
 
-  onModuleInit() {
+  async onModuleInit() {
+    const redisUrl = process.env.REDIS_URL || this.configService.get<string>('app.redisUrl');
+    if (!redisUrl || redisUrl === 'redis://localhost:6379') return;
     try {
-      const redisUrl = process.env.REDIS_URL || this.configService.get<string>('app.redisUrl') || 'redis://localhost:6379';
       const isTls = redisUrl.startsWith('rediss://');
-      this.redis = new Redis(redisUrl, {
+      const client = new Redis(redisUrl, {
         tls: isTls ? { rejectUnauthorized: false } : undefined,
+        family: 0,
         lazyConnect: true,
         maxRetriesPerRequest: null,
         enableOfflineQueue: false,
+        retryStrategy: (times) => (times > 3 ? null : Math.min(times * 1000, 3000)),
+        reconnectOnError: () => false,
       });
-      this.redis.connect().catch(() => null);
+      client.on('error', () => {});
+      await client.connect();
+      await client.ping();
+      this.redis = client;
+      console.log('Redis connected successfully');
     } catch {
-      // Redis unavailable — auth will work without session cache
+      console.log('Redis unavailable — running without cache');
     }
+  }
+
+  private async redisGet(key: string): Promise<string | null> {
+    return this.redis?.get(key).catch(() => null) ?? null;
+  }
+  private async redisSet(key: string, value: string, ttl?: number): Promise<void> {
+    if (!this.redis) return;
+    if (ttl) await this.redis.set(key, value, 'EX', ttl).catch(() => null);
+    else await this.redis.set(key, value).catch(() => null);
+  }
+  private async redisDel(key: string): Promise<void> {
+    await this.redis?.del(key).catch(() => null);
+  }
+  private async redisIncr(key: string, ttl: number): Promise<number> {
+    if (!this.redis) return 1;
+    const val = await this.redis.incr(key).catch(() => 1);
+    await this.redis.expire(key, ttl).catch(() => null);
+    return val;
   }
 
   async register(dto: RegisterDto, ipAddress: string): Promise<void> {
@@ -80,22 +106,21 @@ export class AuthService implements OnModuleInit {
     if (!user.isEmailVerified) throw new ForbiddenException('Please verify your email before logging in');
 
     const lockKey = `login_lock:${user.id}`;
-    const locked = await this.redis.get(lockKey).catch(() => null);
+    const locked = await this.redisGet(lockKey);
     if (locked) throw new UnauthorizedException('Too many failed attempts. Try again in 15 minutes.');
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) {
       const attemptsKey = `login_attempts:${user.id}`;
-      const attempts = await this.redis.incr(attemptsKey).catch(() => 1);
-      await this.redis.expire(attemptsKey, LOCK_TTL_SECONDS).catch(() => null);
-      if (attempts >= MAX_LOGIN_ATTEMPTS) await this.redis.set(lockKey, '1', 'EX', LOCK_TTL_SECONDS).catch(() => null);
+      const attempts = await this.redisIncr(attemptsKey, LOCK_TTL_SECONDS);
+      if (attempts >= MAX_LOGIN_ATTEMPTS) await this.redisSet(lockKey, '1', LOCK_TTL_SECONDS);
       await this.auditService.log({ userId: user.id, action: 'LOGIN_FAILED', entityType: 'User', entityId: user.id, ipAddress });
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    await this.redis.del(`login_attempts:${user.id}`).catch(() => null);
+    await this.redisDel(`login_attempts:${user.id}`);
     const tokens = await this.issueTokens(user);
-    await this.redis.set(`session:${user.id}`, JSON.stringify({ role: user.role, email: user.email }), 'EX', 7 * 24 * 3600).catch(() => null);
+    await this.redisSet(`session:${user.id}`, JSON.stringify({ role: user.role, email: user.email }), 7 * 24 * 3600);
     await this.auditService.log({ userId: user.id, action: 'USER_LOGIN', entityType: 'User', entityId: user.id, ipAddress });
     return tokens;
   }
@@ -118,7 +143,7 @@ export class AuthService implements OnModuleInit {
     for (const r of records) {
       if (await bcrypt.compare(rawToken, r.tokenHash)) { r.isRevoked = true; await this.tokenRepo.save(r); break; }
     }
-    await this.redis.del(`session:${userId}`).catch(() => null);
+    await this.redisDel(`session:${userId}`);
     await this.auditService.log({ userId, action: 'USER_LOGOUT', entityType: 'User', entityId: userId });
   }
 
@@ -140,7 +165,7 @@ export class AuthService implements OnModuleInit {
     user.passwordResetExpiresAt = null as any;
     await this.userRepo.save(user);
     await this.tokenRepo.update({ userId: user.id }, { isRevoked: true });
-    await this.redis.del(`session:${user.id}`).catch(() => null);
+    await this.redisDel(`session:${user.id}`);
     await this.auditService.log({ userId: user.id, action: 'PASSWORD_RESET_COMPLETED', entityType: 'User', entityId: user.id });
   }
 
