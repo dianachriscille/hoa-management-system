@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { MaintenanceRequestEntity, StatusHistoryEntity, RequestPhotoEntity, RequestNoteEntity, MaintenanceStatus, MaintenanceCategory } from './entities/maintenance.entities';
 import { CreateMaintenanceRequestDto, AssignRequestDto, UpdateStatusDto, AddNoteDto } from './maintenance.dto';
 import { AuditService } from '../../common/audit/audit.service';
@@ -25,7 +23,6 @@ export class MaintenanceService {
     @InjectRepository(RequestNoteEntity) private noteRepo: Repository<RequestNoteEntity>,
     private dataSource: DataSource,
     private auditService: AuditService,
-    @InjectQueue('maintenance-auto-close') private autoCloseQueue: Queue,
   ) {}
 
   async createRequest(userId: string, residentProfileId: string, dto: CreateMaintenanceRequestDto): Promise<MaintenanceRequestEntity> {
@@ -133,7 +130,7 @@ export class MaintenanceService {
       await queryRunner.commitTransaction();
 
       if (dto.status === MaintenanceStatus.Resolved) {
-        await this.autoCloseQueue.add('auto-close', { requestId: id }, { delay: 7 * 24 * 3600 * 1000, jobId: `auto-close-${id}` });
+        // Auto-close handled by MaintenanceScheduler (hourly cron)
       }
       await this.auditService.log({ userId, action: 'MAINTENANCE_STATUS_UPDATED', entityType: 'MaintenanceRequest', entityId: id, metadata: { from: prev, to: dto.status } });
       return request;

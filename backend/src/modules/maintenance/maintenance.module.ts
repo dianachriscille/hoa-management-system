@@ -1,27 +1,22 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { BullModule } from '@nestjs/bullmq';
 import { MaintenanceService } from './maintenance.service';
 import { MaintenanceController } from './maintenance.controller';
+import { MaintenanceScheduler } from './maintenance.scheduler';
 import { MaintenanceRequestEntity, StatusHistoryEntity, RequestPhotoEntity, RequestNoteEntity } from './entities/maintenance.entities';
 import { FileModule } from '../file/file.module';
 import { NotificationModule } from '../notification/notification.module';
 import { AuditModule } from '../../common/audit/audit.module';
-import { MaintenanceAutoCloseWorker, MaintenanceNotificationWorker } from './maintenance.workers';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([MaintenanceRequestEntity, StatusHistoryEntity, RequestPhotoEntity, RequestNoteEntity]),
-    BullModule.registerQueue(
-      { name: 'maintenance-auto-close' },
-      { name: 'maintenance-notifications' },
-    ),
     FileModule,
     NotificationModule,
     AuditModule,
   ],
   controllers: [MaintenanceController],
-  providers: [MaintenanceService, MaintenanceAutoCloseWorker, MaintenanceNotificationWorker],
+  providers: [MaintenanceService, MaintenanceScheduler],
   exports: [MaintenanceService],
 })
 export class MaintenanceModule {}

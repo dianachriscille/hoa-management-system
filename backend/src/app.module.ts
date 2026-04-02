@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 import { appConfig } from './config/app.config';
@@ -26,6 +26,7 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [appConfig] }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -44,29 +45,8 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
         extra: process.env.DATABASE_URL ? { ssl: { rejectUnauthorized: false } } : {},
       }),
     }),
-    BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
-        const url = config.get('app.redisUrl');
-        if (!url || url === 'redis://localhost:6379') {
-          return { connection: { host: 'localhost', port: 6379 } };
-        }
-        const isTls = url.startsWith('rediss://');
-        const parsed = new URL(url);
-        return {
-          connection: {
-            host: parsed.hostname,
-            port: parseInt(parsed.port || '6379'),
-            password: decodeURIComponent(parsed.password),
-            username: parsed.username || 'default',
-            tls: isTls ? { rejectUnauthorized: false } : undefined,
-            family: 0,
-            maxRetriesPerRequest: null,
-            reconnectOnError: () => false,
-          },
-        };
-      },
-    }),
+    // BullMQ disabled — using scheduled tasks instead to avoid Upstash connection issues
+    // BullModule.forRootAsync({...}),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     AuthModule,
     ResidentModule,
