@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsPositive, IsOptional, IsEnum, Matches } from 'class-validator';
+import { IsString, IsNumber, IsPositive, IsOptional, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class GenerateInvoicesDto {
@@ -13,17 +13,7 @@ export class ManualPaymentDto {
   @ApiProperty({ required: false }) @IsOptional() @IsString() notes?: string;
 }
 
-export class PaymongoWebhookDto {
-  data: {
-    attributes: {
-      type: string;
-      data: {
-        id: string;
-        attributes: {
-          reference_number: string;
-          status: string;
-        };
-      };
-    };
-  };
+export class SubmitGcashPaymentDto {
+  @ApiProperty() @IsString() gcashReferenceNumber: string;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() notes?: string;
 }

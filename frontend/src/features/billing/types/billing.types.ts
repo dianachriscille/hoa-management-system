@@ -11,11 +11,28 @@ export interface Invoice {
   createdAt: string;
 }
 
+export interface GcashInfo {
+  qrCodeUrl: string;
+  accountName: string;
+  gcashNumber: string;
+}
+
+export interface PendingPayment {
+  id: string;
+  invoiceId: string;
+  amount: number;
+  gcashReferenceNumber: string;
+  screenshotUrl: string;
+  notes?: string;
+  createdAt: string;
+}
+
 export interface BillingDashboard {
   total: number;
   paid: number;
   outstanding: number;
   overdue: number;
+  pendingVerification: number;
   collectionRate: string;
 }
 

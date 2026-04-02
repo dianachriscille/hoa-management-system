@@ -1,18 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import Axios from 'axios';
 import Decimal from 'decimal.js';
 import { ConfigService } from '@nestjs/config';
 import { InvoiceEntity, PaymentEntity, ReceiptEntity, InvoiceStatus, PaymentMethod, PaymentStatus } from './entities/billing.entities';
 import { BillingConfigEntity } from './entities/billing-config.entity';
 import { AuditService } from '../../common/audit/audit.service';
 import { ResidentService } from '../resident/resident.service';
+import { FileService } from '../file/file.service';
 
 @Injectable()
 export class BillingService {
-  private paymongoAxios = Axios.create({ baseURL: 'https://api.paymongo.com/v1', timeout: 10000 });
-
   constructor(
     @InjectRepository(InvoiceEntity) private invoiceRepo: Repository<InvoiceEntity>,
     @InjectRepository(PaymentEntity) private paymentRepo: Repository<PaymentEntity>,
@@ -21,11 +19,62 @@ export class BillingService {
     private config: ConfigService,
     private auditService: AuditService,
     private residentService: ResidentService,
+    private fileService: FileService,
     private dataSource: DataSource,
-  ) {
-    const secretKey = Buffer.from(`${config.get('app.paymongoSecretKey') || process.env.PAYMONGO_SECRET_KEY || ''}:`).toString('base64');
-    this.paymongoAxios.defaults.headers.common['Authorization'] = `Basic ${secretKey}`;
-    this.paymongoAxios.defaults.headers.common['Content-Type'] = 'application/json';
+  ) {}
+
+  async getGcashInfo(): Promise<{ qrCodeUrl: string; accountName: string; gcashNumber: string }> {
+    const cfg = await this.configRepo.findOne({ where: { isActive: true } });
+    if (!cfg) throw new BadRequestException('No active billing configuration found');
+    return { qrCodeUrl: cfg.gcashQrCodeUrl || '', accountName: cfg.gcashAccountName || '', gcashNumber: cfg.gcashNumber || '' };
+  }
+
+  async submitGcashPayment(invoiceId: string, userId: string, gcashReferenceNumber: string, screenshotFile: Express.Multer.File, notes?: string): Promise<PaymentEntity> {
+    const invoice = await this.getInvoice(invoiceId, userId, 'Resident');
+    if (invoice.status === InvoiceStatus.Paid) throw new BadRequestException('Invoice already paid');
+    const pending = await this.paymentRepo.findOne({ where: { invoiceId, status: PaymentStatus.Pending } });
+    if (pending) throw new ConflictException('A payment is already pending verification for this invoice');
+
+    const { url } = await this.fileService.uploadBuffer(screenshotFile.buffer, 'gcash-screenshots', screenshotFile.mimetype);
+
+    const payment = await this.paymentRepo.save(this.paymentRepo.create({
+      invoiceId,
+      amount: invoice.amount,
+      paymentMethod: PaymentMethod.GCashScreenshot,
+      status: PaymentStatus.Pending,
+      gcashReferenceNumber,
+      screenshotUrl: url,
+      notes,
+    }));
+
+    await this.auditService.log({ userId, action: 'GCASH_PAYMENT_SUBMITTED', entityType: 'Payment', entityId: payment.id });
+    return payment;
+  }
+
+  async getPendingPayments(): Promise<PaymentEntity[]> {
+    return this.paymentRepo.find({ where: { status: PaymentStatus.Pending, paymentMethod: PaymentMethod.GCashScreenshot }, order: { createdAt: 'ASC' } });
+  }
+
+  async verifyPayment(paymentId: string, approved: boolean, pmUserId: string): Promise<PaymentEntity> {
+    const payment = await this.paymentRepo.findOne({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('Payment not found');
+    if (payment.status !== PaymentStatus.Pending) throw new BadRequestException('Payment already processed');
+
+    if (approved) {
+      payment.status = PaymentStatus.Completed;
+      payment.isVerified = true;
+      payment.paidAt = new Date();
+      payment.recordedBy = pmUserId;
+      await this.paymentRepo.save(payment);
+      await this.updateInvoiceAfterPayment(payment.invoiceId, payment.amount);
+    } else {
+      payment.status = PaymentStatus.Failed;
+      payment.recordedBy = pmUserId;
+      await this.paymentRepo.save(payment);
+    }
+
+    await this.auditService.log({ userId: pmUserId, action: approved ? 'PAYMENT_APPROVED' : 'PAYMENT_REJECTED', entityType: 'Payment', entityId: paymentId });
+    return payment;
   }
 
   async generateInvoices(billingPeriod: string, triggeredBy: string): Promise<{ generated: number; skipped: number }> {
@@ -58,48 +107,16 @@ export class BillingService {
     return invoice;
   }
 
-  async initiatePaymongoPayment(invoiceId: string, userId: string): Promise<{ checkoutUrl: string }> {
-    const invoice = await this.getInvoice(invoiceId, userId, 'Resident');
-    if (invoice.status === InvoiceStatus.Paid) throw new BadRequestException('Invoice already paid');
-    const pending = await this.paymentRepo.findOne({ where: { invoiceId, status: PaymentStatus.Pending } });
-    if (pending) throw new ConflictException('A payment is already in progress for this invoice');
-    try {
-      const { data } = await this.paymongoAxios.post('/links', { data: { attributes: { amount: Math.round(Number(invoice.amount) * 100), description: `HOA Dues - ${invoice.billingPeriod}`, remarks: invoice.invoiceNumber } } });
-      const checkoutUrl = data.data.attributes.checkout_url;
-      const linkId = data.data.id;
-      await this.paymentRepo.save(this.paymentRepo.create({ invoiceId, amount: invoice.amount, paymentMethod: PaymentMethod.GCash, status: PaymentStatus.Pending, gcashPaymentId: linkId, gcashCheckoutUrl: checkoutUrl }));
-      return { checkoutUrl };
-    } catch { throw new BadRequestException('Payment service temporarily unavailable. Please try again.'); }
-  }
-
-  async handlePaymongoWebhook(payload: any): Promise<void> {
-    const eventType = payload?.data?.attributes?.type;
-    const linkId = payload?.data?.attributes?.data?.id;
-    const payment = await this.paymentRepo.findOne({ where: { gcashPaymentId: linkId } });
-    if (!payment) return;
-    if (eventType === 'link.payment.paid') {
-      payment.status = PaymentStatus.Completed;
-      payment.gcashReferenceNumber = payload?.data?.attributes?.data?.attributes?.reference_number;
-      payment.paidAt = new Date();
-      await this.paymentRepo.save(payment);
-      await this.updateInvoiceAfterPayment(payment.invoiceId, payment.amount, PaymentMethod.GCash, payment.gcashReferenceNumber);
-    } else {
-      payment.status = PaymentStatus.Failed;
-      await this.paymentRepo.save(payment);
-    }
-    await this.auditService.log({ action: 'PAYMONGO_WEBHOOK_PROCESSED', entityType: 'Payment', entityId: payment.id, metadata: { status: payment.status } });
-  }
-
   async recordManualPayment(invoiceId: string, dto: any, recordedBy: string): Promise<InvoiceEntity> {
     const invoice = await this.invoiceRepo.findOne({ where: { id: invoiceId } });
     if (!invoice) throw new NotFoundException('Invoice not found');
     if (invoice.status === InvoiceStatus.Paid) throw new BadRequestException('Invoice already paid');
     const totalPaid = await this.getTotalPaid(invoiceId);
     const remaining = new Decimal(invoice.amount).minus(totalPaid);
-    if (new Decimal(dto.amount).gt(remaining)) throw new BadRequestException(`Amount exceeds remaining balance`);
-    await this.paymentRepo.save(this.paymentRepo.create({ invoiceId, amount: dto.amount, paymentMethod: PaymentMethod.Manual, status: PaymentStatus.Completed, recordedBy, notes: dto.notes, gcashReferenceNumber: dto.referenceNumber, paidAt: new Date() } as any));
+    if (new Decimal(dto.amount).gt(remaining)) throw new BadRequestException('Amount exceeds remaining balance');
+    await this.paymentRepo.save(this.paymentRepo.create({ invoiceId, amount: dto.amount, paymentMethod: PaymentMethod.Manual, status: PaymentStatus.Completed, recordedBy, notes: dto.notes, gcashReferenceNumber: dto.referenceNumber, isVerified: true, paidAt: new Date() } as any));
     await this.auditService.log({ userId: recordedBy, action: 'MANUAL_PAYMENT_RECORDED', entityType: 'Invoice', entityId: invoiceId });
-    return this.updateInvoiceAfterPayment(invoiceId, dto.amount, PaymentMethod.Manual, dto.referenceNumber);
+    return this.updateInvoiceAfterPayment(invoiceId, dto.amount);
   }
 
   async getDashboard(period: string, role: string): Promise<any> {
@@ -108,7 +125,8 @@ export class BillingService {
     const paid = invoices.filter(i => i.status === InvoiceStatus.Paid).length;
     const outstanding = invoices.filter(i => [InvoiceStatus.Unpaid, InvoiceStatus.PartiallyPaid].includes(i.status)).length;
     const overdue = invoices.filter(i => i.status === InvoiceStatus.Overdue).length;
-    return { total, paid, outstanding, overdue, collectionRate: `${total > 0 ? ((paid / total) * 100).toFixed(1) : '0.0'}%` };
+    const pendingVerification = await this.paymentRepo.count({ where: { status: PaymentStatus.Pending, paymentMethod: PaymentMethod.GCashScreenshot } });
+    return { total, paid, outstanding, overdue, pendingVerification, collectionRate: `${total > 0 ? ((paid / total) * 100).toFixed(1) : '0.0'}%` };
   }
 
   private async getTotalPaid(invoiceId: string): Promise<Decimal> {
@@ -116,18 +134,13 @@ export class BillingService {
     return payments.reduce((sum, p) => sum.plus(p.amount), new Decimal(0));
   }
 
-  private async updateInvoiceAfterPayment(invoiceId: string, amount: number, method: PaymentMethod, referenceNumber?: string): Promise<InvoiceEntity> {
+  private async updateInvoiceAfterPayment(invoiceId: string, amount: number): Promise<InvoiceEntity> {
     const invoice = await this.invoiceRepo.findOne({ where: { id: invoiceId } });
     if (!invoice) return invoice as any;
     const totalPaid = await this.getTotalPaid(invoiceId);
-    if (totalPaid.gte(invoice.amount)) {
-      invoice.status = InvoiceStatus.Paid;
-      invoice.paidAt = new Date();
-      await this.invoiceRepo.save(invoice);
-    } else {
-      invoice.status = InvoiceStatus.PartiallyPaid;
-      await this.invoiceRepo.save(invoice);
-    }
+    invoice.status = totalPaid.gte(invoice.amount) ? InvoiceStatus.Paid : InvoiceStatus.PartiallyPaid;
+    if (invoice.status === InvoiceStatus.Paid) invoice.paidAt = new Date();
+    await this.invoiceRepo.save(invoice);
     return invoice;
   }
 }

@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 
 export enum InvoiceStatus { Unpaid = 'Unpaid', PartiallyPaid = 'PartiallyPaid', Paid = 'Paid', Overdue = 'Overdue' }
-export enum PaymentMethod { GCash = 'GCash', Manual = 'Manual' }
+export enum PaymentMethod { GCashScreenshot = 'GCashScreenshot', Manual = 'Manual' }
 export enum PaymentStatus { Pending = 'Pending', Completed = 'Completed', Failed = 'Failed' }
 
 @Entity('invoice')
@@ -30,8 +30,8 @@ export class PaymentEntity {
   @Column({ name: 'payment_method', type: 'enum', enum: PaymentMethod }) paymentMethod: PaymentMethod;
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.Pending }) status: PaymentStatus;
   @Column({ name: 'gcash_reference_number', nullable: true }) gcashReferenceNumber: string;
-  @Column({ name: 'gcash_payment_id', nullable: true }) gcashPaymentId: string;
-  @Column({ name: 'gcash_checkout_url', nullable: true }) gcashCheckoutUrl: string;
+  @Column({ name: 'screenshot_url', nullable: true }) screenshotUrl: string;
+  @Column({ name: 'is_verified', default: false }) isVerified: boolean;
   @Column({ name: 'recorded_by', nullable: true }) recordedBy: string;
   @Column({ nullable: true }) notes: string;
   @Column({ name: 'paid_at', nullable: true }) paidAt: Date;

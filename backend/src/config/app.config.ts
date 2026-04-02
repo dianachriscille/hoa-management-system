@@ -29,10 +29,6 @@ export const appConfig = registerAs('app', () => ({
   // Redis (Upstash)
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
 
-  // PayMongo (replaces Maya Business API)
-  paymongoPublicKey: process.env.PAYMONGO_PUBLIC_KEY || '',
-  paymongoSecretKey: process.env.PAYMONGO_SECRET_KEY || '',
-  paymongoWebhookSecret: process.env.PAYMONGO_WEBHOOK_SECRET || '',
 
   // Google Drive OAuth (unchanged - free)
   googleDriveClientId: process.env.GOOGLE_DRIVE_CLIENT_ID || '',

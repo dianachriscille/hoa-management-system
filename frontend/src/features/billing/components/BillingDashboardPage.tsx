@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { billingService } from '../services/billing.service';
 import { RecordManualPaymentModal } from './RecordManualPaymentModal';
+import { PendingPayment } from '../types/billing.types';
 
 export function BillingDashboardPage() {
   const [period, setPeriod] = useState(() => {
@@ -49,6 +50,7 @@ export function BillingDashboardPage() {
             { label: 'Paid', value: dashboard.paid, color: 'bg-green-50' },
             { label: 'Outstanding', value: dashboard.outstanding, color: 'bg-yellow-50' },
             { label: 'Collection Rate', value: dashboard.collectionRate, color: 'bg-blue-50' },
+            { label: 'Pending Verification', value: dashboard.pendingVerification, color: 'bg-orange-50' },
           ].map(card => (
             <div key={card.label} className={`${card.color} rounded-lg p-4 border`}>
               <p className="text-sm text-gray-500">{card.label}</p>
@@ -65,6 +67,48 @@ export function BillingDashboardPage() {
           onSuccess={() => { setSelectedInvoiceId(null); refetch(); }}
         />
       )}
+
+      <PendingPaymentsSection onVerified={() => refetch()} />
+    </div>
+  );
+}
+
+function PendingPaymentsSection({ onVerified }: { onVerified: () => void }) {
+  const queryClient = useQueryClient();
+  const { data: payments = [] } = useQuery({
+    queryKey: ['pending-payments'],
+    queryFn: () => billingService.getPendingPayments().then(r => r.data),
+  });
+
+  const verify = useMutation({
+    mutationFn: ({ id, approved }: { id: string; approved: boolean }) => billingService.verifyPayment(id, approved),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['pending-payments'] }); onVerified(); },
+  });
+
+  if (payments.length === 0) return null;
+
+  return (
+    <div className="mt-8">
+      <h2 className="text-lg font-bold mb-4">Pending GCash Verifications ({payments.length})</h2>
+      <div className="space-y-3">
+        {payments.map((p: PendingPayment) => (
+          <div key={p.id} className="border rounded-lg p-4 flex gap-4">
+            <a href={p.screenshotUrl} target="_blank" rel="noopener noreferrer">
+              <img src={p.screenshotUrl} alt="GCash screenshot" className="w-24 h-24 object-cover rounded border" />
+            </a>
+            <div className="flex-1">
+              <p className="font-medium">Ref: {p.gcashReferenceNumber}</p>
+              <p className="text-sm text-gray-500">Amount: ₱{Number(p.amount).toFixed(2)}</p>
+              <p className="text-sm text-gray-500">Submitted: {new Date(p.createdAt).toLocaleString()}</p>
+              {p.notes && <p className="text-sm text-gray-400 mt-1">{p.notes}</p>}
+            </div>
+            <div className="flex flex-col gap-2 justify-center">
+              <button onClick={() => verify.mutate({ id: p.id, approved: true })} disabled={verify.isPending} className="bg-green-600 text-white px-4 py-1.5 rounded text-sm disabled:opacity-50">Approve</button>
+              <button onClick={() => verify.mutate({ id: p.id, approved: false })} disabled={verify.isPending} className="bg-red-600 text-white px-4 py-1.5 rounded text-sm disabled:opacity-50">Reject</button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

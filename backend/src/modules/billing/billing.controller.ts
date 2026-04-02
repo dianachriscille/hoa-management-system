@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Param, Query, Req, HttpCode, HttpStatus, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
-import { GenerateInvoicesDto, ManualPaymentDto } from './billing.dto';
+import { GenerateInvoicesDto, ManualPaymentDto, SubmitGcashPaymentDto } from './billing.dto';
 import { Roles, Public } from '../../common/decorators/roles.decorator';
 import { Role } from '../auth/auth.dto';
 
@@ -10,6 +11,12 @@ import { Role } from '../auth/auth.dto';
 @Controller('billing')
 export class BillingController {
   constructor(private billingService: BillingService) {}
+
+  @Get('gcash-info')
+  @ApiOperation({ summary: 'Get GCash QR code and account info' })
+  getGcashInfo() {
+    return this.billingService.getGcashInfo();
+  }
 
   @Get('invoices/me')
   @ApiOperation({ summary: 'Get my invoices (Resident)' })
@@ -23,11 +30,29 @@ export class BillingController {
     return this.billingService.getInvoice(id, req.user.userId, req.user.role);
   }
 
-  @Post('invoices/:id/pay')
+  @Post('invoices/:id/gcash-payment')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Initiate GCash payment via PayMongo' })
-  initiatePayment(@Param('id') id: string, @Req() req: any) {
-    return this.billingService.initiatePaymongoPayment(id, req.user.userId);
+  @UseInterceptors(FileInterceptor('screenshot'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Submit GCash payment with screenshot' })
+  submitGcashPayment(@Param('id') id: string, @Body() dto: SubmitGcashPaymentDto, @UploadedFile() file: Express.Multer.File, @Req() req: any) {
+    if (!file) throw new Error('Screenshot is required');
+    return this.billingService.submitGcashPayment(id, req.user.userId, dto.gcashReferenceNumber, file, dto.notes);
+  }
+
+  @Get('payments/pending')
+  @Roles(Role.PropertyManager)
+  @ApiOperation({ summary: 'Get pending GCash payments for verification (PM only)' })
+  getPendingPayments() {
+    return this.billingService.getPendingPayments();
+  }
+
+  @Post('payments/:id/verify')
+  @Roles(Role.PropertyManager)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve or reject a GCash payment (PM only)' })
+  verifyPayment(@Param('id') id: string, @Body('approved') approved: boolean, @Req() req: any) {
+    return this.billingService.verifyPayment(id, approved, req.user.userId);
   }
 
   @Post('invoices/:id/manual-payment')
@@ -49,13 +74,5 @@ export class BillingController {
   @ApiOperation({ summary: 'Get billing dashboard (PM + Board)' })
   getDashboard(@Query('period') period: string, @Req() req: any) {
     return this.billingService.getDashboard(period, req.user.role);
-  }
-
-  @Public()
-  @Post('webhooks/paymongo')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'PayMongo payment webhook (public)' })
-  paymongoWebhook(@Body() payload: any) {
-    return this.billingService.handlePaymongoWebhook(payload);
   }
 }
