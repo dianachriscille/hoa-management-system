@@ -44,8 +44,21 @@ import { ResidentProfileEntity } from './modules/resident/entities/resident-prof
         extra: process.env.DATABASE_URL ? { ssl: { rejectUnauthorized: false } } : {},
       }),
     }),
-    // BullMQ disabled — background jobs will be added after stable deployment
-    // BullModule.forRootAsync({...}),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const url = config.get('app.redisUrl');
+        const isTls = url?.startsWith('rediss://');
+        return {
+          connection: {
+            url,
+            tls: isTls ? { rejectUnauthorized: false } : undefined,
+            family: 0,
+            maxRetriesPerRequest: null,
+          },
+        };
+      },
+    }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     AuthModule,
     ResidentModule,
